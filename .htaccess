@@ -1,0 +1,21 @@
+RewriteEngine On
+RewriteBase /tech_store/
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^san-pham/([a-zA-Z0-9-]+)-([0-9]+)$ product_detail.php?id=$2 [L,QSA]
+RewriteRule ^san-pham$ products.php [L,QSA]
+RewriteRule ^gio-hang$ cart.php [L,QSA]
+RewriteRule ^thanh-toan$ checkout.php [L,QSA]
+RewriteRule ^dang-nhap$ login.php [L,QSA]
+RewriteRule ^quen-mat-khau$ forgot_password.php [L,QSA]
+RewriteRule ^xac-thuc-otp$ reset_password.php [L,QSA]
+RewriteRule ^xac-thuc-email$ verify_email.php [L,QSA]
+RewriteRule ^dang-nhap-google$ google_login.php [L,QSA]
+RewriteRule ^dang-nhap-google/callback$ google_callback.php [L,QSA]
+RewriteRule ^dang-ky$ register.php [L,QSA]
+RewriteRule ^dang-xuat$ logout.php [L,QSA]
+RewriteRule ^tai-khoan$ profile.php [L,QSA]
+RewriteRule ^don-hang$ orders.php [L,QSA]
+RewriteRule ^tin-tuc$ news.php [L,QSA]
+RewriteRule ^tin-tuc/([a-zA-Z0-9-]+)-([0-9]+)$ news_detail.php?id=$2 [L,QSA]
+RewriteRule ^lien-he$ contact.php [L,QSA]

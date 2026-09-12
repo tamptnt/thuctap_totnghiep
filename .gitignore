@@ -1,0 +1,10 @@
+# Không commit file cấu hình môi trường thật (chứa mật khẩu DB, khoá mã hoá...).
+.env
+
+# File người dùng tải lên
+uploads/*
+!uploads/.gitkeep
+
+# File hệ thống
+.DS_Store
+Thumbs.db

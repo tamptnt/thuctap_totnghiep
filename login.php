@@ -1,0 +1,29 @@
+<?php
+require_once 'config.php';
+if(isset($_SESSION['user_id'])){header('Location: '.(($_SESSION['role']??'')==='admin'?$base_url.'admin/index.php':$base_url));exit;}
+$error=trim((string)($_SESSION['auth_error']??''));$success=trim((string)($_SESSION['auth_success']??''));unset($_SESSION['auth_error'],$_SESSION['auth_success']);
+if($_SERVER['REQUEST_METHOD']==='POST'){
+    csrf_guard();
+    $identity=trim((string)($_POST['username']??''));$password=(string)($_POST['password']??'');
+
+    if(is_login_locked($conn,$identity)){
+        $error='Bạn hoặc địa chỉ IP này đã nhập sai quá nhiều lần. Vui lòng thử lại sau ít phút.';
+    }else{
+        $stmt=$conn->prepare('SELECT id,fullname,role,password FROM users WHERE (username=? OR email=?) LIMIT 1');$stmt->bind_param('ss',$identity,$identity);$stmt->execute();$user=$stmt->get_result()->fetch_assoc();$stmt->close();
+        if($user && password_verify_upgradeable($conn,$user['id'],$password,$user['password'])){
+            record_login_attempt($conn,$identity,true);
+            session_regenerate_id(true); // chống session fixation
+            $_SESSION['user_id']=$user['id'];$_SESSION['fullname']=$user['fullname'];$_SESSION['role']=$user['role'];
+            header('Location: '.($user['role']==='admin'?$base_url.'admin/index.php':$base_url));exit;
+        }
+        record_login_attempt($conn,$identity,false);
+        $error='Tên đăng nhập, email hoặc mật khẩu không chính xác.';
+    }
+}
+include 'header.php';
+?>
+<style>
+.auth-page{padding:28px 0 58px}.auth-shell{width:min(880px,100%);margin:auto;border:1px solid var(--line);border-radius:18px;background:#fff;display:grid;grid-template-columns:.82fr 1.18fr;overflow:hidden}.auth-note{padding:34px;background:#f7f3ee;display:flex;flex-direction:column;justify-content:space-between}.auth-note i.hero-icon{width:48px;height:48px;border-radius:12px;background:#fff;color:var(--primary);display:flex;align-items:center;justify-content:center;font-size:21px;border:1px solid var(--line)}.auth-note h1{margin:14px 0 8px;color:var(--primary-dark);font-size:28px}.auth-note p{color:var(--muted);line-height:1.65}.auth-points{display:grid;gap:9px;margin-top:26px}.auth-points span{display:flex;align-items:center;gap:9px;color:var(--text);font-size:14px}.auth-points i{color:var(--primary)}.auth-card{padding:34px}.auth-card h2{font-size:25px;color:var(--primary-dark)}.auth-card>p{margin:5px 0 20px;color:var(--muted);font-size:14px}.auth-alert{margin-bottom:12px;padding:10px 12px;border-radius:9px;font-size:14px}.auth-alert.error{background:#fff0f0;color:#a83d42}.auth-alert.success{background:#eef7f0;color:#44755b}.form-group{margin-bottom:13px}.form-label{display:block;margin-bottom:6px;color:var(--text);font-weight:bold}.form-control{width:100%;height:43px;border:1px solid var(--line);border-radius:9px;padding:0 12px;background:#fff;outline:0}.form-control:focus{border-color:#b99a7c;box-shadow:0 0 0 3px rgba(154,118,88,.1)}.password-row{display:flex;justify-content:flex-end;margin-top:-3px;margin-bottom:15px}.password-row a{color:var(--primary);font-size:14px;font-weight:bold}.auth-btn,.google-btn{width:100%;height:43px;border-radius:9px;display:flex;align-items:center;justify-content:center;gap:9px;font-weight:bold;font-size:15px}.auth-btn{border:0;background:var(--primary-dark);color:#fff;cursor:pointer}.divider{margin:16px 0;display:flex;align-items:center;gap:10px;color:var(--muted);font-size:13px}.divider:before,.divider:after{content:'';height:1px;background:var(--line);flex:1}.google-btn{border:1px solid var(--line);background:#fff;color:var(--text)}.google-btn i{color:#9a7658}.auth-links{text-align:center;margin-top:17px;color:var(--muted);font-size:14px}.auth-links a{color:var(--primary);font-weight:bold}@media(max-width:720px){.auth-shell{grid-template-columns:1fr}.auth-note{display:none}.auth-card{padding:24px}}
+</style>
+<div class="container auth-page"><div class="auth-shell"><aside class="auth-note"><div><i class="fas fa-microchip hero-icon"></i><h1>Thiết bị phù hợp bắt đầu từ nhu cầu rõ ràng</h1><p>Đăng nhập để lưu giỏ hàng, đặt sản phẩm công nghệ và theo dõi trạng thái thanh toán, giao hàng.</p></div><div class="auth-points"><span><i class="fas fa-circle-check"></i> Đăng nhập nhanh bằng Google</span><span><i class="fas fa-circle-check"></i> Khôi phục mật khẩu qua email OTP</span><span><i class="fas fa-circle-check"></i> Theo dõi đơn hàng tập trung</span></div></aside><section class="auth-card"><h2>Đăng nhập</h2><p>Tiếp tục với tài khoản NovaTech của bạn.</p><?php if($error!==''):?><div class="auth-alert error"><?php echo htmlspecialchars($error); ?></div><?php endif;?><?php if($success!==''):?><div class="auth-alert success"><?php echo htmlspecialchars($success); ?></div><?php endif;?><form method="POST"><?php echo csrf_field(); ?><div class="form-group"><label class="form-label">Tên đăng nhập hoặc email</label><input class="form-control" type="text" name="username" required autocomplete="username"></div><div class="form-group"><label class="form-label">Mật khẩu</label><input class="form-control" type="password" name="password" required autocomplete="current-password"></div><div class="password-row"><a href="<?php echo $base_url; ?>quen-mat-khau">Quên mật khẩu?</a></div><button class="auth-btn" type="submit"><i class="fas fa-right-to-bracket"></i> Đăng nhập</button></form><div class="divider"><span>hoặc</span></div><a class="google-btn" href="<?php echo $base_url; ?>dang-nhap-google"><i class="fab fa-google"></i> Đăng nhập nhanh bằng Google</a><div class="auth-links">Chưa có tài khoản? <a href="<?php echo $base_url; ?>dang-ky">Đăng ký ngay</a></div></section></div></div>
+<?php include 'footer.php'; ?>

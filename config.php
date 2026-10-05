@@ -18,7 +18,10 @@ require_once __DIR__ . '/includes/settings_store.php';
 require_once __DIR__ . '/includes/variants.php';
 require_once __DIR__ . '/includes/order_status.php';
 require_once __DIR__ . '/includes/reviews.php';
+require_once __DIR__ . '/includes/news_reviews.php';
 require_once __DIR__ . '/includes/coupons.php';
+require_once __DIR__ . '/includes/returns.php';
+require_once __DIR__ . '/includes/warranty.php';
 security_send_headers();
 $db_host = env('DB_HOST', 'localhost');
 $db_user = env('DB_USER', 'root');
@@ -38,7 +41,7 @@ function project_base_url()
         $relativeRoot = trim(substr($projectRoot, strlen($documentRoot)), '/');
         return $relativeRoot === '' ? '/' : '/' . $relativeRoot . '/';
     }
-    return '/tech_store/';
+    return '/thuctap_totnghiep/';
 }
 
 function media_url($value, $baseUrl = null)

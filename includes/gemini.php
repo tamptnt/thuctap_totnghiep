@@ -2,14 +2,13 @@
 function gemini_model_options()
 {
     return [
+        'gemini-3.8-flash' => 'Gemini 3.8 Flash',
+        'gemini-3.7-flash' => 'Gemini 3.7 Flash',
         'gemini-3.6-flash' => 'Gemini 3.6 Flash',
         'gemini-3.5-flash' => 'Gemini 3.5 Flash',
         'gemini-3.5-flash-lite' => 'Gemini 3.5 Flash-Lite',
         'gemini-3.1-flash-lite' => 'Gemini 3.1 Flash-Lite',
-        'gemini-3.1-pro-preview' => 'Gemini 3.1 Pro Preview',
-        'gemini-2.5-pro' => 'Gemini 2.5 Pro',
-        'gemini-2.5-flash' => 'Gemini 2.5 Flash',
-        'gemini-2.5-flash-lite' => 'Gemini 2.5 Flash-Lite'
+        'gemini-3.1-pro-preview' => 'Gemini 3.1 Pro Preview'
     ];
 }
 
@@ -29,6 +28,53 @@ function gemini_get_setting($conn, $key, $default = '')
 function gemini_set_setting($conn, $key, $value, $icon = 'fas fa-robot')
 {
     return settings_set($conn, $key, $value, $icon);
+}
+
+function gemini_http_post($url, $body, $apiKey, $timeout = 15)
+{
+    $status = 0;
+    $response = false;
+    $transportError = '';
+
+    if (function_exists('curl_init')) {
+        $ch = curl_init($url);
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_POST => true,
+            CURLOPT_HTTPHEADER => [
+                'Content-Type: application/json',
+                'x-goog-api-key: ' . $apiKey
+            ],
+            CURLOPT_POSTFIELDS => $body,
+            CURLOPT_CONNECTTIMEOUT => 5,
+            CURLOPT_TIMEOUT => max(3, (int)$timeout)
+        ]);
+        $response = curl_exec($ch);
+        $status = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        if ($response === false) {
+            $transportError = curl_error($ch);
+        }
+        curl_close($ch);
+    } else {
+        $context = stream_context_create([
+            'http' => [
+                'method' => 'POST',
+                'header' => "Content-Type: application/json\r\nx-goog-api-key: {$apiKey}\r\n",
+                'content' => $body,
+                'timeout' => max(3, (int)$timeout),
+                'ignore_errors' => true
+            ]
+        ]);
+        $response = @file_get_contents($url, false, $context);
+        if (isset($http_response_header[0]) && preg_match('/\s(\d{3})\s/', $http_response_header[0], $match)) {
+            $status = (int)$match[1];
+        }
+        if ($response === false) {
+            $transportError = 'Không thể kết nối Gemini API từ máy chủ.';
+        }
+    }
+
+    return [$response, $status, $transportError];
 }
 
 function gemini_request($conn, $contents, $model = '', $systemInstruction = '', $jsonMode = false, $maxOutputTokens = 4096)
@@ -59,62 +105,68 @@ function gemini_request($conn, $contents, $model = '', $systemInstruction = '', 
     if ($jsonMode) {
         $payload['generationConfig']['responseMimeType'] = 'application/json';
     }
-
-    $url = 'https://generativelanguage.googleapis.com/v1beta/models/' . rawurlencode($model) . ':generateContent';
     $body = json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-    $status = 0;
-    $response = false;
-    $transportError = '';
 
-    if (function_exists('curl_init')) {
-        $ch = curl_init($url);
-        curl_setopt_array($ch, [
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_POST => true,
-            CURLOPT_HTTPHEADER => [
-                'Content-Type: application/json',
-                'x-goog-api-key: ' . $apiKey
-            ],
-            CURLOPT_POSTFIELDS => $body,
-            CURLOPT_CONNECTTIMEOUT => 15,
-            CURLOPT_TIMEOUT => 60
-        ]);
-        $response = curl_exec($ch);
-        $status = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        if ($response === false) {
-            $transportError = curl_error($ch);
-        }
-        curl_close($ch);
-    } else {
-        $context = stream_context_create([
-            'http' => [
-                'method' => 'POST',
-                'header' => "Content-Type: application/json\r\nx-goog-api-key: {$apiKey}\r\n",
-                'content' => $body,
-                'timeout' => 60,
-                'ignore_errors' => true
-            ]
-        ]);
-        $response = @file_get_contents($url, false, $context);
-        if (isset($http_response_header[0]) && preg_match('/\s(\d{3})\s/', $http_response_header[0], $match)) {
-            $status = (int)$match[1];
-        }
-        if ($response === false) {
-            $transportError = 'Không thể kết nối Gemini API từ máy chủ.';
+    // Model chính, sau đó các model dự phòng (chỉ dùng model có trong danh sách hợp lệ).
+    $candidates = [$model];
+    foreach (['gemini-3.5-flash-lite', 'gemini-3.1-flash-lite', 'gemini-3.6-flash'] as $fallback) {
+        if (isset($activeModels[$fallback]) && !in_array($fallback, $candidates, true)) {
+            $candidates[] = $fallback;
         }
     }
 
-    if ($response === false) {
-        return ['ok' => false, 'error' => $transportError !== '' ? $transportError : 'Không thể kết nối Gemini API.'];
+    @set_time_limit(40);
+    $deadline = microtime(true) + 22; // tổng thời gian tối đa cho mọi lần thử
+    $retryable = [429, 500, 502, 503, 504];
+    $data = null;
+    $usedModel = $model;
+    $lastError = 'Không thể kết nối Gemini API.';
+    $lastStatus = 0;
+    $attempts = [];
+
+    foreach ($candidates as $candidate) {
+        $url = 'https://generativelanguage.googleapis.com/v1beta/models/' . rawurlencode($candidate) . ':generateContent';
+        for ($attempt = 0; $attempt < 2; $attempt++) {
+            $remaining = $deadline - microtime(true);
+            if ($remaining < 3) {
+                break 2; // hết ngân sách thời gian, dừng để trả lỗi rõ ràng thay vì bị hosting ngắt kết nối
+            }
+            list($response, $status, $transportError) = gemini_http_post($url, $body, $apiKey, min(15, (int)floor($remaining)));
+
+            if ($response === false) {
+                $attempts[] = [$candidate, 0, $transportError];
+                $lastStatus = 0;
+                $lastError = $transportError !== '' ? $transportError : 'Không thể kết nối Gemini API.';
+                usleep(500000);
+                continue;
+            }
+
+            $decoded = json_decode($response, true);
+            if ($status >= 200 && $status < 300 && is_array($decoded)) {
+                $data = $decoded;
+                $usedModel = $candidate;
+                break 2;
+            }
+
+            $lastStatus = $status;
+            $lastError = $decoded['error']['message'] ?? ('Gemini API trả về lỗi HTTP ' . $status . '.');
+            $attempts[] = [$candidate, $status, mb_substr((string)$lastError, 0, 160)];
+
+            if ($status === 404 || $status === 429) {
+                break; // model không tồn tại hoặc hết quota: đổi sang model kế tiếp
+            }
+            if (!in_array($status, $retryable, true)) {
+                break 2; // lỗi cấu hình (sai key, sai định dạng...): dừng hẳn
+            }
+            usleep(500000); // 500/502/503/504: đợi rồi thử lại cùng model
+        }
     }
 
-    $data = json_decode($response, true);
-    if ($status < 200 || $status >= 300) {
-        $message = $data['error']['message'] ?? 'Gemini API trả về lỗi HTTP ' . $status . '.';
-        return ['ok' => false, 'error' => $message];
-    }
-    if (!is_array($data)) {
-        return ['ok' => false, 'error' => 'Phản hồi từ Gemini không hợp lệ.'];
+    if ($data === null) {
+        if (in_array($lastStatus, $retryable, true) || microtime(true) >= $deadline - 3) {
+            $lastError = 'Hệ thống AI đang quá tải, bạn vui lòng thử lại sau ít phút nhé.';
+        }
+        return ['ok' => false, 'error' => $lastError, 'attempts' => $attempts];
     }
 
     $parts = $data['candidates'][0]['content']['parts'] ?? [];
@@ -130,7 +182,7 @@ function gemini_request($conn, $contents, $model = '', $systemInstruction = '', 
         return ['ok' => false, 'error' => $reason !== '' ? 'Gemini không tạo được nội dung. Trạng thái: ' . $reason : 'Gemini không trả về nội dung.'];
     }
 
-    return ['ok' => true, 'text' => $text, 'model' => $model, 'raw' => $data];
+    return ['ok' => true, 'text' => $text, 'model' => $usedModel, 'raw' => $data];
 }
 
 function gemini_text($conn, $prompt, $model = '', $systemInstruction = '', $jsonMode = false, $maxOutputTokens = 4096)

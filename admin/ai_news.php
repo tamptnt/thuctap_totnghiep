@@ -35,8 +35,8 @@ $prompt = "Viết một bài tin tức hoàn chỉnh cho website bán đồ côn
 $system = 'Bạn là biên tập viên nội dung công nghệ chuyên viết về sản phẩm công nghệ, thiết bị số, phần cứng, kết nối, hiệu năng, bảo hành và xu hướng công nghệ. Luôn tuân thủ đúng định dạng JSON được yêu cầu.';
 
 $result = gemini_text($conn, $prompt, $model, $system, true, 16000);
-if (!$result['ok'] && $model !== 'gemini-2.5-flash') {
-    $fallback = gemini_text($conn, $prompt, 'gemini-2.5-flash', $system, true, 16000);
+if (!$result['ok'] && $model !== 'gemini-3.5-flash-lite') {
+    $fallback = gemini_text($conn, $prompt, 'gemini-3.5-flash-lite', $system, true, 16000);
     if ($fallback['ok']) {
         $result = $fallback;
     }

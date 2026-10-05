@@ -4,7 +4,6 @@ require_once 'config.php';
 require_once 'includes/auth_services.php';
 require_once 'includes/email_verification.php';
 
-$base_url = '/tech_store/';
 
 if (!isset($_SESSION['user_id'])) {
     header("Location: " . $base_url . "dang-nhap");

@@ -85,3 +85,34 @@ function send_verification_email($conn, $user, $base_url)
 
     return auth_send_mail($conn, $user['email'], $subject, $html);
 }
+
+
+/**
+ * Tự tạo bảng email_verifications và cột users.email_verified_at nếu database chưa có
+ * (tránh lỗi 500 khi đăng ký trên hosting mới import DB cũ).
+ */
+function ensure_email_verification_schema($conn)
+{
+    try {
+        $conn->query("CREATE TABLE IF NOT EXISTS email_verifications (
+            id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+            user_id INT NOT NULL,
+            token_hash CHAR(64) NOT NULL,
+            expires_at DATETIME NOT NULL,
+            used_at DATETIME NULL DEFAULT NULL,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            KEY idx_user (user_id),
+            KEY idx_token (token_hash)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+        $col = $conn->query("SHOW COLUMNS FROM users LIKE 'email_verified_at'");
+        if ($col && $col->num_rows === 0) {
+            $conn->query("ALTER TABLE users ADD COLUMN email_verified_at DATETIME NULL DEFAULT NULL");
+        }
+    } catch (Throwable $e) {
+        error_log('ensure_email_verification_schema: ' . $e->getMessage());
+    }
+}
+
+if (isset($conn) && $conn instanceof mysqli) {
+    ensure_email_verification_schema($conn);
+}

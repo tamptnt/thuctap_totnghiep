@@ -46,7 +46,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') { csrf_guard();
         }
         
         if ($action === 'delete') {
-            $id = $_POST['id'];
+            $id = (int)$_POST['id'];
             $check = $conn->query("SELECT id FROM products WHERE brand_id = $id");
             if ($check->num_rows > 0) {
                 $_SESSION['msg'] = ['type' => 'error', 'text' => 'Không thể xóa vì thương hiệu đang có sản phẩm!'];

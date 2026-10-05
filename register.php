@@ -3,7 +3,6 @@ require_once 'config.php';
 require_once 'includes/auth_services.php';
 require_once 'includes/email_verification.php';
 
-$base_url = '/tech_store/';
 
 if (isset($_SESSION['user_id'])) {
     if ($_SESSION['role'] == 'admin') {
@@ -49,7 +48,13 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 $insert_stmt->close();
 
                 $newUser = ['id' => $new_user_id, 'fullname' => $fullname, 'email' => $email];
-                if (send_verification_email($conn, $newUser, $base_url)) {
+                $mailSent = false;
+                try {
+                    $mailSent = send_verification_email($conn, $newUser, $base_url);
+                } catch (Throwable $e) {
+                    error_log('send_verification_email: ' . $e->getMessage());
+                }
+                if ($mailSent) {
                     $success = 'Đăng ký tài khoản thành công! Vui lòng kiểm tra email để xác thực tài khoản.';
                 } else {
                     $success = 'Đăng ký tài khoản thành công! (Không gửi được email xác thực — bạn có thể yêu cầu gửi lại sau khi đăng nhập.)';
